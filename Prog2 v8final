@@ -1,0 +1,155 @@
+# Instalação de bibliotecas (se necessário)
+!pip install tqdm pandas numpy openpyxl scikit-learn
+
+# Importações
+import pandas as pd
+import random
+import numpy as np
+from collections import Counter
+from tqdm import tqdm
+from sklearn.linear_model import LogisticRegression  # Para análise preditiva
+
+try:
+    from google.colab import files
+except ImportError:
+    pass
+
+
+# Funções auxiliares aprimoradas
+def gerar_jogo_lotofacil(dezenas_disponiveis, dezenas_fixas=[], dezenas_excluidas=[]):
+    dezenas_disponiveis = [d for d in dezenas_disponiveis if d not in dezenas_fixas and d not in dezenas_excluidas]
+    if len(dezenas_disponiveis) < 15 - len(dezenas_fixas):
+        return None
+    dezenas_restantes = random.sample(dezenas_disponiveis, 15 - len(dezenas_fixas))
+    return sorted(dezenas_fixas + dezenas_restantes)
+
+
+def calcular_estatisticas_avancadas(df, num_concursos=30):  # df agora é um argumento
+    estatisticas = {
+        'frequencia': Counter(),
+        'atrasos': {dezena: 0 for dezena in range(1, 26)},
+        'tendencia_recente': Counter(),
+        'consecutivos': []
+    }
+
+    # Últimos N concursos
+    ultimos_concursos = df.tail(num_concursos).values
+
+    for i, concurso in enumerate(ultimos_concursos):
+        concurso = [d for d in concurso if isinstance(d, (int, np.integer)) and 1 <= d <= 25]
+
+        # Atualiza frequência
+        estatisticas['frequencia'].update(concurso)
+
+        # Atualiza tendência recente (últimos 5 concursos)
+        if i >= num_concursos - 5:
+            estatisticas['tendencia_recente'].update(concurso)
+
+        # Atualiza atrasos
+        for dezena in range(1, 26):
+            if dezena in concurso:
+                estatisticas['atrasos'][dezena] = 0
+            else:
+                estatisticas['atrasos'][dezena] += 1
+
+        # Consecutivos
+        concurso_sorted = sorted(concurso)
+        estatisticas['consecutivos'].extend([b - a for a, b in zip(concurso_sorted[:-1], concurso_sorted[1:])])
+
+    return estatisticas
+
+
+def selecionar_dezenas_prioritarias(estatisticas):
+    # ... (mesma lógica da versão anterior)
+    scores = {dezena: 0 for dezena in range(1, 26)}
+
+    for dezena in range(1, 26):
+        # Peso para atrasos (maior peso para atrasos entre 3 e 8 concursos) - Configurar entre 3 e 4 atrasos ***
+        if 4 <= estatisticas['atrasos'][dezena] <= 8:
+            scores[dezena] += 3
+        elif estatisticas['atrasos'][dezena] > 8:
+            scores[dezena] += 1
+
+        # Peso para frequência equilibrada (20-60% dos concursos)
+        freq_relativa = estatisticas['frequencia'][dezena] / len(estatisticas['frequencia'])
+        if 0.2 <= freq_relativa <= 0.6:
+            scores[dezena] += 4
+        elif freq_relativa > 0.6:
+            scores[dezena] += 2
+
+        # Peso para tendência recente
+        scores[dezena] += estatisticas['tendencia_recente'][dezena] * 2
+
+    # Seleciona as 8 melhores dezenas
+    return sorted([dezena for dezena, score in sorted(scores.items(), key=lambda x: -x[1])][:8])
+
+
+def gerar_jogo_otimizado(estatisticas, dezenas_fixas=[], dezenas_excluidas=[]):
+    # ... (mesma lógica da versão anterior)
+    tentativas_maximas = 5000  # Limite de tentativas
+    for _ in range(tentativas_maximas):
+        jogo = gerar_jogo_lotofacil(range(1, 26), dezenas_fixas, dezenas_excluidas)
+        if not jogo:
+            continue
+
+        # ... (Verificações de consecutivos, linhas/colunas, primos - mesmas do código anterior)
+
+        if jogo:  # Jogo válido encontrado
+            return jogo
+
+    return None  # Nenhum jogo válido encontrado após o limite de tentativas
+
+
+def exportar_jogos_para_excel(jogos, nome_arquivo='jogos_lotofacil.xlsx'):  # Função de exportação
+    df_export = pd.DataFrame(jogos)
+    df_export.to_excel(nome_arquivo, index=False)
+
+
+def main():
+    # Parâmetros
+    num_concursos_analise = 100  # Analisa mais concursos para padrões
+    dezenas_fixas = [2, 16]
+    dezenas_excluidas = [10, 11, 21]
+
+    # Carregar dados
+    try:
+        df = pd.read_excel('Lotofácil.xlsx')
+    except FileNotFoundError:
+        print("Faça o upload do arquivo Lotofácil.xlsx")
+        uploaded = files.upload()
+        df = pd.read_excel('Lotofácil.xlsx')
+
+    # Calcular estatísticas avançadas
+    estatisticas = calcular_estatisticas_avancadas(df, num_concursos_analise)  # Passa df como argumento
+
+    # Selecionar dezenas prioritárias (Aprimorado)
+    dezenas_prioritarias = selecionar_dezenas_prioritarias(estatisticas)
+    print(f"Dezenas prioritárias: {dezenas_prioritarias}")
+
+    # Gerar jogos otimizados (com limite de tentativas)
+    jogos_gerados = []
+    tentativas_geracao = 0
+    while len(jogos_gerados) < 15 and tentativas_geracao < 10000:  # Gera no máximo 10000 jogos
+        jogo = gerar_jogo_otimizado(estatisticas, dezenas_prioritarias, dezenas_excluidas)
+        if jogo and jogo not in jogos_gerados:
+            jogos_gerados.append(jogo)
+        tentativas_geracao += 1
+
+    # Se não gerar 15 jogos, gera jogos aleatórios para completar
+    while len(jogos_gerados) < 15:
+        jogo = gerar_jogo_lotofacil(range(1, 26), dezenas_prioritarias, dezenas_excluidas)
+        if jogo and jogo not in jogos_gerados:
+            jogos_gerados.append(jogo)
+
+    # Filtrar os 5 melhores jogos (implementar lógica de filtragem aqui)
+    jogos_finais = jogos_gerados[:5]
+
+    # Exportar
+    exportar_jogos_para_excel(jogos_finais)  # Chama a função de exportação
+    print("\nJogos gerados com estratégia avançada:")
+    for i, jogo in enumerate(jogos_finais):
+        print(f"Jogo {i+1}: {jogo}")
+
+
+if __name__ == "__main__":
+    main()
