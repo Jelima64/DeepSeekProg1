@@ -1,0 +1,158 @@
+# Instalação de bibliotecas (se necessário)
+!pip install pandas numpy openpyxl tqdm
+
+# Importações
+import pandas as pd
+import numpy as np
+from collections import Counter
+from tqdm import tqdm
+
+# Função para carregar e preparar os dados
+def carregar_dados(nome_arquivo='Lotofácil.xlsx'):
+    """
+    Carrega o arquivo Excel e prepara os dados para análise.
+    Retorna um DataFrame com os dados limpos e colunas de dezenas.
+    """
+    try:
+        df = pd.read_excel(nome_arquivo)
+    except FileNotFoundError:
+        print(f"Arquivo {nome_arquivo} não encontrado!")
+        return None
+
+    # Identificar colunas de dezenas (assumindo que são as colunas B1 a B15)
+    colunas_dezenas = [col for col in df.columns if col.startswith('B')]
+    df_dezenas = df[colunas_dezenas].apply(pd.to_numeric, errors='coerce').dropna()
+    
+    # Adicionar coluna de soma das dezenas
+    df['Soma'] = df_dezenas.sum(axis=1)
+    
+    # Filtrar sorteios sem ganhadores de 15 pontos
+    df_sem_ganhadores = df[df['Ganhadores 15 acertos'] == 0].copy()
+    
+    return df, df_sem_ganhadores, df_dezenas
+
+# Função para calcular estatísticas básicas
+def calcular_estatisticas(df_dezenas):
+    """
+    Calcula estatísticas gerais:
+    - Quantidade de ímpares/pares
+    - Dezenas ausentes por sorteio
+    - Repetições em relação ao sorteio anterior
+    """
+    estatisticas = []
+    dezenas_anteriores = set()
+    
+    for index, row in tqdm(df_dezenas.iterrows(), total=len(df_dezenas), desc="Calculando estatísticas"):
+        dezenas = set(row.dropna().astype(int))
+        
+        # Ímpares e pares
+        impares = sum(1 for d in dezenas if d % 2 != 0)
+        pares = 15 - impares
+        
+        # Dezenas ausentes
+        ausentes = list(set(range(1, 26)) - dezenas)
+        
+        # Repetições em relação ao sorteio anterior
+        if index > 0:
+            repetidas = len(dezenas.intersection(dezenas_anteriores))
+        else:
+            repetidas = 0
+        
+        estatisticas.append({
+            'Ímpares': impares,
+            'Pares': pares,
+            'Ausentes': ausentes,
+            'Repetidas': repetidas
+        })
+        
+        dezenas_anteriores = dezenas.copy()
+    
+    return pd.DataFrame(estatisticas)
+
+# Função para analisar sorteios sem ganhadores
+def analisar_sorteios_sem_ganhadores(df_sem_ganhadores):
+    """
+    Analisa padrões em sorteios onde não houve ganhadores de 15 pontos.
+    Retorna estatísticas específicas para esses sorteios.
+    """
+    if df_sem_ganhadores.empty:
+        print("Nenhum sorteio sem ganhadores encontrado!")
+        return None
+    
+    # Frequência das dezenas nesses sorteios
+    todas_dezenas = df_sem_ganhadores.filter(like='B').values.flatten()
+    frequencia_dezenas = Counter(todas_dezenas)
+    
+    # Soma média das dezenas
+    soma_media = df_sem_ganhadores['Soma'].mean()
+    
+    # Ímpares/pares médios
+    impares_medio = (df_sem_ganhadores.filter(like='B') % 2).sum().sum() / len(df_sem_ganhadores)
+    
+    return {
+        'Frequência Dezenas': frequencia_dezenas,
+        'Soma Média': soma_media,
+        'Ímpares Médios': impares_medio
+    }
+
+# Função para gerar jogos estratégicos
+def gerar_jogos_estrategicos(estatisticas, num_jogos=5):
+    """
+    Gera jogos com base nas estatísticas de sorteios sem ganhadores.
+    Prioriza dezenas menos frequentes e padrões de soma/ímpares.
+    """
+    dezenas_frequentes = [d for d, _ in estatisticas['Frequência Dezenas'].most_common(10)]
+    pesos = np.array([1 / (estatisticas['Frequência Dezenas'][d] + 1) for d in range(1, 26)])
+    pesos /= pesos.sum()
+    
+    jogos = []
+    for _ in range(num_jogos):
+        while True:
+            # Seleciona 15 dezenas com base nos pesos
+            jogo = np.random.choice(range(1, 26), size=15, replace=False, p=pesos)
+            jogo = sorted(jogo)
+            
+            # Verifica se atende aos critérios de soma e ímpares
+            soma = sum(jogo)
+            impares = sum(1 for d in jogo if d % 2 != 0)
+            
+            if (abs(soma - estatisticas['Soma Média']) < 10) and (abs(impares - estatisticas['Ímpares Médios']) < 2):
+                jogos.append(jogo)
+                break
+    
+    return jogos
+
+# Função principal
+def main():
+    # Carregar dados
+    df, df_sem_ganhadores, df_dezenas = carregar_dados()
+    
+    if df is None:
+        return
+    
+    # Calcular estatísticas gerais
+    df_estatisticas = calcular_estatisticas(df_dezenas)
+    df = pd.concat([df, df_estatisticas], axis=1)
+    
+    # Analisar sorteios sem ganhadores
+    estatisticas_especiais = analisar_sorteios_sem_ganhadores(df_sem_ganhadores)
+    
+    if estatisticas_especiais:
+        print("\nEstatísticas dos Sorteios sem Ganhadores de 15 Pontos:")
+        print(f"Soma Média: {estatisticas_especiais['Soma Média']:.2f}")
+        print(f"Ímpares Médios: {estatisticas_especiais['Ímpares Médios']:.2f}")
+        print("Dezenas Mais Frequentes:", estatisticas_especiais['Frequência Dezenas'].most_common(10))
+        
+        # Gerar jogos estratégicos
+        jogos = gerar_jogos_estrategicos(estatisticas_especiais, num_jogos=7)
+        print("\nJogos Sugeridos para Sorteios sem Ganhadores:")
+        for i, jogo in enumerate(jogos, 1):
+            print(f"Jogo {i}: {jogo}")
+        
+        # Exportar para Excel
+        df_jogos = pd.DataFrame(jogos, columns=[f"Dezena {i+1}" for i in range(15)])
+        df_jogos.to_excel("jogos_estrategicos.xlsx", index=False)
+        print("\nJogos exportados para 'jogos_estrategicos.xlsx'")
+
+if __name__ == "__main__":
+    main()
