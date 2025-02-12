@@ -1,0 +1,140 @@
+import pandas as pd
+import random
+from collections import defaultdict, Counter
+from itertools import combinations
+
+try:
+    from google.colab import files
+except ImportError:
+    pass
+
+# Função para calcular frequência e atraso das dezenas
+def calcular_frequencia_e_atraso(df, ultimos_n_concursos=10):
+    frequencia = defaultdict(int)
+    atraso = defaultdict(int)
+    
+    ultimos_concursos = df.tail(ultimos_n_concursos)
+    
+    # Calcula frequência das dezenas
+    for _, row in ultimos_concursos.iterrows():
+        dezenas = row[1:16]  # Colunas Bola1 a Bola15
+        for dezena in dezenas:
+            frequencia[dezena] += 1
+    
+    # Calcula atraso das dezenas (concursos desde a última aparição)
+    for dezena in range(1, 26):
+        atraso[dezena] = 0
+        encontrou = False
+        for idx in reversed(range(len(df))):  # Verifica do concurso mais recente para trás
+            if dezena in df.iloc[idx, 1:16].values:
+                encontrou = True
+                break
+            atraso[dezena] += 1
+        if not encontrou:
+            atraso[dezena] = len(df)  # Se nunca apareceu, atraso máximo
+    
+    return frequencia, atraso
+
+# Função para preencher grupos com base nas frequências e atrasos
+def preencher_grupos(frequencia, atraso):
+    grupos = {'A': [], 'B': [], 'C': [], 'D': [], 'E': [], 'F': [], 'G': []}
+    dezenas_usadas = set()
+    
+    # Ordena dezenas por frequência (maior para menor) e atraso (maior para menor)
+    dezenas_frequencia = sorted(frequencia.keys(), key=lambda x: (-frequencia[x], x))
+    dezenas_atraso = sorted(atraso.keys(), key=lambda x: (-atraso[x], x))
+    
+    for grupo in grupos.keys():
+        # Escolhe 2 dezenas de maior frequência não usadas
+        cont = 0
+        for dezena in dezenas_frequencia:
+            if dezena not in dezenas_usadas and cont < 2:
+                grupos[grupo].append(dezena)
+                dezenas_usadas.add(dezena)
+                cont += 1
+        
+        # Escolhe 1 dezena de maior atraso não usada
+        for dezena in dezenas_atraso:
+            if dezena not in dezenas_usadas and len(grupos[grupo]) < 3:
+                grupos[grupo].append(dezena)
+                dezenas_usadas.add(dezena)
+                break
+    
+    return grupos
+
+# Função para gerar os jogos a partir dos grupos
+def gerar_jogos(grupos):
+    jogos = []
+    for comb in combinations(grupos.keys(), 5):
+        jogo = []
+        for grupo in comb:
+            jogo.extend(grupos[grupo])
+        jogos.append(sorted(jogo))
+    
+    return jogos
+
+# Função para calcular a soma das dezenas de um jogo
+def soma_dezenas(jogo):
+    return sum(jogo)
+
+# Função para gerar o relatório
+def gerar_relatorio(jogos):
+    print("Relatório de Jogos Gerados:")
+    for i, jogo in enumerate(jogos, start=1):
+        print(f"Jogo {i}: {jogo} (Soma: {soma_dezenas(jogo)})")
+
+# Função para verificar a frequência dos grupos e dezenas
+def verificar_frequencia(jogos, grupos):
+    freq_grupos = Counter()
+    freq_dezenas = Counter()
+    
+    for jogo in jogos:
+        for grupo, dezenas in grupos.items():
+            if all(dezena in jogo for dezena in dezenas):
+                freq_grupos[grupo] += 1
+        
+        for dezena in jogo:
+            freq_dezenas[dezena] += 1
+    
+    print("\nVerificação de Frequência:")
+    print("Frequência dos Grupos:")
+    for grupo, freq in freq_grupos.items():
+        print(f"{grupo}: {freq} vezes")
+    
+    print("\nFrequência das Dezenas:")
+    for dezena, freq in sorted(freq_dezenas.items()):
+        print(f"Dezena {dezena}: {freq} vezes")
+
+# Função principal
+def main():
+    try:
+        df = pd.read_excel('Lotofácil.xlsx')
+    except FileNotFoundError:
+        print("Arquivo 'Lotofácil.xlsx' não encontrado. Faça o upload:")
+        try:
+            uploaded = files.upload()
+            if 'Lotofácil.xlsx' in uploaded:
+                df = pd.read_excel('Lotofácil.xlsx')
+            else:
+                raise FileNotFoundError("Arquivo 'Lotofácil.xlsx' não foi carregado.")
+        except NameError:
+            raise FileNotFoundError("O upload de arquivos não está disponível neste ambiente.")
+    
+    frequencia, atraso = calcular_frequencia_e_atraso(df)
+    grupos = preencher_grupos(frequencia, atraso)
+    
+    # Verifica se todas as dezenas são únicas
+    todas_dezenas = [dezena for grupo in grupos.values() for dezena in grupo]
+    if len(todas_dezenas) != len(set(todas_dezenas)):
+        print("Erro: Há dezenas repetidas nos grupos. Ajuste a lógica de seleção.")
+    else:
+        print("Grupos preenchidos com dezenas únicas:")
+        for grupo, dezenas in grupos.items():
+            print(f"{grupo}: {sorted(dezenas)}")
+        
+        jogos_gerados = gerar_jogos(grupos)
+        gerar_relatorio(jogos_gerados)
+        verificar_frequencia(jogos_gerados, grupos)
+
+if __name__ == "__main__":
+    main()
