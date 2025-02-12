@@ -1,0 +1,71 @@
+# Configuração dos grupos de dezenas
+grupos = {
+    'A': [2, 13, 19],
+    'B': [6, 18, 24],
+    'C': [5, 9, 14],
+    'D': [3, 8, 11],
+    'E': [1, 7, 15],
+    'F': [10, 17, 25],
+    'G': [16, 20, 23]
+}
+
+# Função para gerar os jogos
+def gerar_jogos(grupos):
+    from itertools import combinations
+    
+    # Lista de grupos (A, B, C, D, E, F, G)
+    lista_grupos = list(grupos.keys())
+    
+    # Gera todas as combinações de 5 grupos
+    combinacoes = list(combinations(lista_grupos, 5))
+    
+    # Seleciona as 21 primeiras combinações
+    jogos = []
+    for comb in combinacoes[:21]:
+        jogo = []
+        for grupo in comb:
+            jogo.extend(grupos[grupo])
+        jogos.append(sorted(jogo))
+    
+    return jogos
+
+# Função para calcular a soma das dezenas de um jogo
+def soma_dezenas(jogo):
+    return sum(jogo)
+
+# Função para gerar o relatório
+def gerar_relatorio(jogos):
+    print("Relatório de Jogos Gerados:")
+    for i, jogo in enumerate(jogos, start=1):
+        print(f"Jogo {i}: {jogo} (Soma: {soma_dezenas(jogo)})")
+
+# Função para verificar a frequência dos grupos e dezenas
+def verificar_frequencia(jogos, grupos):
+    from collections import defaultdict
+    
+    # Contagem de frequência dos grupos
+    freq_grupos = defaultdict(int)
+    for jogo in jogos:
+        for grupo, dezenas in grupos.items():
+            if all(dezena in jogo for dezena in dezenas):
+                freq_grupos[grupo] += 1
+    
+    # Contagem de frequência das dezenas
+    freq_dezenas = defaultdict(int)
+    for jogo in jogos:
+        for dezena in jogo:
+            freq_dezenas[dezena] += 1
+    
+    print("\nVerificação de Frequência:")
+    print("Frequência dos Grupos:")
+    for grupo, freq in freq_grupos.items():
+        print(f"{grupo}: {freq} vezes")
+    
+    print("\nFrequência das Dezenas:")
+    for dezena, freq in sorted(freq_dezenas.items()):
+        print(f"Dezena {dezena}: {freq} vezes")
+
+# Execução do programa
+jogos_gerados = gerar_jogos(grupos)
+gerar_relatorio(jogos_gerados)
+verificar_frequencia(jogos_gerados, grupos)
