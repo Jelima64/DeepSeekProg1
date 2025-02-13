@@ -1,0 +1,110 @@
+import pandas as pd
+from collections import defaultdict
+from itertools import combinations
+
+def parse_table_data():
+    # Simulando a leitura da tabela fornecida
+    data = [
+        [3303, '25/01/2025', 'sáb', 2,3,4,5,6,7,8,13,16,18,20,21,22,23,24],
+        [3304, '27/01/2025', 'seg', 1,3,4,5,7,9,10,11,12,14,15,19,20,21,23],
+        [3305, '28/01/2025', 'ter', 3,4,5,7,8,9,12,13,17,19,20,21,23,24,25],
+        [3306, '29/01/2025', 'qua', 4,5,6,8,9,10,11,14,15,17,18,19,21,22,24],
+        [3307, '30/01/2025', 'qui', 1,5,8,9,10,11,12,16,18,19,21,22,23,24,25],
+        [3308, '31/01/2025', 'sex', 1,6,7,8,10,11,12,13,14,15,16,18,23,24,25],
+        [3309, '01/02/2025', 'sáb', 2,3,5,9,10,11,13,14,15,18,19,21,22,23,25],
+        [3310, '03/02/2025', 'seg', 1,2,4,5,6,7,10,12,13,16,18,19,20,21,24],
+        [3311, '04/02/2025', 'ter', 2,3,4,5,6,9,10,11,12,14,17,19,20,22,24],
+        [3312, '05/02/2025', 'qua', 1,2,3,4,5,6,8,9,13,15,16,17,20,21,25],
+        [3313, '06/02/2025', 'qui', 1,4,5,6,7,9,11,13,14,16,17,18,19,20,24],
+        [3314, '07/02/2025', 'sex', 1,2,3,5,6,7,8,10,13,14,15,17,19,22,25],
+        [3315, '08/02/2025', 'sáb', 2,3,4,6,7,8,9,11,12,14,17,18,21,24,25],
+        [3316, '10/02/2025', 'seg', 2,3,7,10,11,14,15,16,17,18,20,21,22,23,25],
+        [3317, '11/02/2025', 'ter', 1,2,3,4,5,6,11,12,13,14,18,20,21,22,25],
+        [3318, '12/02/2025', 'qua', 1,3,6,9,10,11,12,13,14,15,19,20,22,24,25]
+    ]
+    
+    columns = ['Concurso', 'Data', 'Dia'] + [f'Bola{i}' for i in range(1, 16)]
+    df = pd.DataFrame(data, columns=columns)
+    return df
+
+def calcular_estatisticas_avancadas(df):
+    estatisticas = {
+        'frequencia': defaultdict(int),
+        'atraso': defaultdict(int),
+        'repeticao_ultimos_5': defaultdict(int)
+    }
+
+    # Calcular frequência geral
+    for _, row in df.iterrows():
+        for dezena in row[3:18]:
+            estatisticas['frequencia'][dezena] += 1
+
+    # Calcular atraso
+    for dezena in range(1, 26):
+        ultima_posicao = None
+        for idx in reversed(df.index):
+            if dezena in df.loc[idx, 'Bola1':'Bola15'].values:
+                ultima_posicao = idx
+                break
+        if ultima_posicao is not None:
+            estatisticas['atraso'][dezena] = df.index[-1] - ultima_posicao
+
+    # Calcular repetições recentes
+    ultimos_5 = df.tail(5)
+    for _, row in ultimos_5.iterrows():
+        for dezena in row[3:18]:
+            estatisticas['repeticao_ultimos_5'][dezena] += 1
+
+    return estatisticas
+
+def gerar_grupos_otimizados(estatisticas):
+    grupos = {'A': [], 'B': [], 'C': [], 'D': [], 'E': [], 'F': [], 'G': []}
+    dezenas_restantes = list(range(1, 26))
+    
+    # Penalizar dezenas que repetiram recentemente
+    penalizadas = [dezena for dezena, count in estatisticas['repeticao_ultimos_5'].items() if count >= 3]
+    
+    # Ordenar por: menor frequência, maior atraso, evitar repetições recentes
+    prioridade = sorted(dezenas_restantes,
+                       key=lambda x: (
+                           estatisticas['frequencia'][x], 
+                           -estatisticas['atraso'][x],
+                           x in penalizadas
+                       ))
+    
+    # Distribuir dezenas nos grupos
+    for grupo in grupos:
+        selecao = []
+        while len(selecao) < 3:
+            for dezena in prioridade:
+                if dezena not in selecao and dezena in dezenas_restantes:
+                    selecao.append(dezena)
+                    dezenas_restantes.remove(dezena)
+                    if len(selecao) == 3:
+                        break
+        grupos[grupo] = sorted(selecao)
+    
+    return grupos
+
+def main():
+    df = parse_table_data()
+    estatisticas = calcular_estatisticas_avancadas(df)
+    
+    print("Análise das Dezenas:")
+    print("Dezena | Frequência | Atraso | Rep. Recentes")
+    for dezena in range(1, 26):
+        print(f"{dezena:6} | {estatisticas['frequencia'][dezena]:9} | {estatisticas['atraso'][dezena]:6} | {estatisticas['repeticao_ultimos_5'][dezena]}")
+    
+    grupos = gerar_grupos_otimizados(estatisticas)
+    
+    print("\nGrupos Gerados:")
+    for letra, dezenas in grupos.items():
+        print(f"{letra}: {dezenas}")
+    
+    print("\nJogos Sugeridos:")
+    for i, comb in enumerate(combinations(grupos.keys(), 5), 1):
+        jogo = sorted([dezena for letra in comb for dezena in grupos[letra]])
+        print(f"Jogo {i}: {jogo}")
+
+if __name__ == "__main__":
+    main()
